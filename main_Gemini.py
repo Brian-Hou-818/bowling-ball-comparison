@@ -47,16 +47,34 @@ except ImportError:
 
 
 # ----------------------------------------------------------------------
-# Coverstock resin strength estimate
+# Shortening & Formatting Helpers
 # ----------------------------------------------------------------------
-# No manufacturer publishes a friction/traction lab number, and it wouldn't be
-# comparable across brands even if they did (every resin blend is proprietary).
-# What IS common ground across the whole industry is the reactive-cover family
-# a ball's resin blend belongs to, and those families have a well-established,
-# consistent ordering by how strong/aggressive the base resin itself is:
-# Urethane (mildest) < Pearl Reactive < Hybrid Reactive < Solid Reactive (strongest).
-# This is a general category-based estimate of the RESIN, not a per-ball
-# scraped or lab-measured number - individual balls within a category vary.
+def simplify_cover(cover_text):
+    cover_lower = str(cover_text).lower()
+    if "urethane" in cover_lower:
+        return "urethane"
+    if "pearl" in cover_lower:
+        return "pearl"
+    if "hybrid" in cover_lower:
+        return "hybrid"
+    if "solid" in cover_lower:
+        return "solid"
+    if "plastic" in cover_lower or "polyester" in cover_lower:
+        return "plastic"
+    return cover_lower.split()[0] if cover_lower else "reactive"
+
+
+def simplify_core(core_text, int_diff=0.0):
+    core_lower = str(core_text).lower()
+    if "asymmetrical" in core_lower or "asymmetric" in core_lower or "asym" in core_lower or int_diff > 0.005:
+        return "asym"
+    return "sym"
+
+
+def simplify_oil(oil_text):
+    return str(oil_text).replace(" Oil", "").replace(" oil", "").strip()
+
+
 def estimate_resin_strength(cover_type):
     cover_lower = str(cover_type).lower()
     if "urethane" in cover_lower:
@@ -70,8 +88,34 @@ def estimate_resin_strength(cover_type):
     return 5.0
 
 
+def determine_preferred_oil(cover_type, finish_text, core_type, int_diff):
+    cover_lower = str(cover_type).lower()
+    finish_lower = str(finish_text).lower()
+
+    if "solid" in cover_lower or "urethane" in cover_lower:
+        if any(g in finish_lower for g in ["500", "1000", "1500", "2000", "3000", "siaair", "lss", "abralon"]):
+            if "polish" not in finish_lower and "compound" not in finish_lower:
+                return "Heavy" if ("asym" in simplify_core(core_type, int_diff) or int_diff > 0.008) else "Medium-Heavy"
+        return "Medium-Heavy"
+
+    if "hybrid" in cover_lower:
+        if "polish" in finish_lower or "compound" in finish_lower or "reacta" in finish_lower:
+            return "Medium"
+        return "Medium-Heavy"
+
+    if "pearl" in cover_lower:
+        if any(g in finish_lower for g in ["500", "1000", "2000"]) and "polish" not in finish_lower:
+            return "Medium-Heavy"
+        return "Medium"
+
+    if "plastic" in cover_lower or "polyester" in cover_lower:
+        return "Dry/Light"
+
+    return "Medium"
+
+
 # ----------------------------------------------------------------------
-# bowwwl.com Ground-Truth Verified Cache
+# Local Ground-Truth Verified Database Cache
 # ----------------------------------------------------------------------
 BOWWWL_VERIFIED_DB = {
     "bionic": {
@@ -80,9 +124,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.47,
         "diff": 0.050,
         "int_diff": 0.000,
-        "cover": "Hybrid Reactive",
+        "cover": "hybrid",
         "cover_name": "NRG Hybrid",
-        "core": "Torsion A.I. Symmetric",
+        "core": "sym",
         "finish": "4000 Abralon",
     },
     "storm bionic": {
@@ -91,9 +135,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.47,
         "diff": 0.050,
         "int_diff": 0.000,
-        "cover": "Hybrid Reactive",
+        "cover": "hybrid",
         "cover_name": "NRG Hybrid",
-        "core": "Torsion A.I. Symmetric",
+        "core": "sym",
         "finish": "4000 Abralon",
     },
     "phaze ii": {
@@ -102,9 +146,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.48,
         "diff": 0.051,
         "int_diff": 0.000,
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "TX-16 Solid Reactive",
-        "core": "Velocity Symmetric",
+        "core": "sym",
         "finish": "3000 Abralon",
     },
     "phaze 2": {
@@ -113,9 +157,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.48,
         "diff": 0.051,
         "int_diff": 0.000,
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "TX-16 Solid Reactive",
-        "core": "Velocity Symmetric",
+        "core": "sym",
         "finish": "3000 Abralon",
     },
     "black widow 3.0": {
@@ -124,9 +168,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.50,
         "diff": 0.058,
         "int_diff": 0.016,
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "HK22 - Cohesion Solid",
-        "core": "Gas Mask Asymmetrical",
+        "core": "asym",
         "finish": "2000 Siaair",
     },
     "black widow 2.0": {
@@ -135,9 +179,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.50,
         "diff": 0.058,
         "int_diff": 0.016,
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "Aggression Solid",
-        "core": "Gas Mask Asymmetrical",
+        "core": "asym",
         "finish": "2000 Siaair",
     },
     "venom shock": {
@@ -146,9 +190,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.48,
         "diff": 0.034,
         "int_diff": 0.000,
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "Turmoil MFK Solid",
-        "core": "Gear Symmetric",
+        "core": "sym",
         "finish": "4000 LSS",
     },
     "iq tour": {
@@ -157,9 +201,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.49,
         "diff": 0.029,
         "int_diff": 0.000,
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "C3 Centripetal Control",
-        "core": "Centripetal Symmetric",
+        "core": "sym",
         "finish": "4000 Abralon",
     },
     "hy-road": {
@@ -168,9 +212,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.57,
         "diff": 0.046,
         "int_diff": 0.000,
-        "cover": "Hybrid Reactive",
+        "cover": "hybrid",
         "cover_name": "R2S Hybrid Reactive",
-        "core": "Inverted Fe2 Symmetric",
+        "core": "sym",
         "finish": "1500 Polished",
     },
     "pitch black": {
@@ -179,9 +223,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.57,
         "diff": 0.022,
         "int_diff": 0.000,
-        "cover": "Urethane Solid",
+        "cover": "urethane",
         "cover_name": "Control Solid Urethane",
-        "core": "Capacitor Symmetric",
+        "core": "sym",
         "finish": "1000 Abralon",
     },
     "ion max": {
@@ -190,9 +234,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.47,
         "diff": 0.055,
         "int_diff": 0.014,
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "Element Max Solid",
-        "core": "Element AI Asymmetrical",
+        "core": "asym",
         "finish": "2000 Abralon",
     },
     "optimum id": {
@@ -201,9 +245,9 @@ BOWWWL_VERIFIED_DB = {
         "rg": 2.47,
         "diff": 0.056,
         "int_diff": 0.018,
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "MicroTrax Solid Reactive",
-        "core": "A.I. Core Technology",
+        "core": "asym",
         "finish": "2000 Abralon",
     },
 }
@@ -224,10 +268,7 @@ class BowwwlScraperThread(QThread):
         query_clean = self.query_name.lower()
         brand_clean = self.brand_name.lower()
 
-        # 1. Local bowwwl.com Fast Cache Match
-        # Use word-boundary matching (not a raw substring check) and prefer the
-        # longest matching key, so e.g. a short key can't false-positive match
-        # inside an unrelated longer query.
+        # 1. Fast Cache Lookup
         matches = [
             key for key in BOWWWL_VERIFIED_DB if re.search(r"\b" + re.escape(key) + r"\b", query_clean)
         ]
@@ -249,12 +290,10 @@ class BowwwlScraperThread(QThread):
             return
 
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-
-        # Format slugs for direct URL lookup
         ball_slug = query_clean.replace(" ", "-")
         brand_slug = brand_clean.replace(" ", "-")
 
-        # 2. Direct URL Slug Lookup using user brand input (e.g., /bowling-ball-database/radical/evil-eye-pearl)
+        # 2. Direct Slug Lookup with Input Brand
         if brand_slug:
             try:
                 direct_url = f"https://www.bowwwl.com/bowling-ball-database/{brand_slug}/{ball_slug}"
@@ -267,7 +306,7 @@ class BowwwlScraperThread(QThread):
             except Exception:
                 pass
 
-        # 3. Fallback Brand Iteration Slug Search
+        # 3. Fallback Brand Slug Search
         brands_to_try = [
             "radical",
             "storm",
@@ -293,13 +332,12 @@ class BowwwlScraperThread(QThread):
             except Exception:
                 continue
 
-        # 4. Search Filter Query Fallback ('search=')
+        # 4. Search Query Fallback
         try:
             search_url = (
                 f"https://www.bowwwl.com/bowling-ball-database?search={requests.utils.quote(self.query_name)}"
             )
             response = requests.get(search_url, headers=headers, timeout=8)
-
             if response.status_code == 200:
                 ball_data = self.parse_bowwwl_table(response.text)
                 if ball_data:
@@ -308,7 +346,7 @@ class BowwwlScraperThread(QThread):
         except Exception:
             pass
 
-        # 5. Playwright Browser Search Fallback
+        # 5. Playwright Search Fallback
         if PLAYWRIGHT_AVAILABLE:
             try:
                 ball_dict = self.scrape_bowwwl_playwright(self.query_name)
@@ -320,7 +358,7 @@ class BowwwlScraperThread(QThread):
 
         self.finished_signal.emit(
             {},
-            f"Could not find exact ball '{self.query_name}' on bowwwl.com.\nVerify the Brand and Ball Name inputs (e.g., Brand: 'Radical', Ball: 'Evil Eye Pearl').",
+            f"Could not find exact ball '{self.query_name}' on bowwwl.com.\nVerify the Brand and Ball Name inputs.",
         )
 
     def parse_bowwwl_table(self, html_text):
@@ -336,9 +374,7 @@ class BowwwlScraperThread(QThread):
         idx_finish = next((i for i, h in enumerate(headers) if "finish" in h), 4)
         idx_core = next((i for i, h in enumerate(headers) if "core" in h), 5)
         idx_rg = next((i for i, h in enumerate(headers) if "rg" in h), 6)
-        idx_diff = next(
-            (i for i, h in enumerate(headers) if "diff" in h and "mb" not in h and "int" not in h), 7
-        )
+        idx_diff = next((i for i, h in enumerate(headers) if "diff" in h and "mb" not in h and "int" not in h), 7)
         idx_int = next((i for i, h in enumerate(headers) if "mb" in h or "int" in h or "asym" in h), 8)
 
         rows = table.find_all("tr")
@@ -346,13 +382,8 @@ class BowwwlScraperThread(QThread):
             cols = [c.text.strip() for c in row.find_all("td")]
             if len(cols) > max(idx_rg, idx_diff):
                 name = cols[idx_name]
-
                 if any(word in name.lower() for word in self.query_name.lower().split()):
-                    brand = (
-                        cols[idx_brand]
-                        if len(cols) > idx_brand
-                        else (self.brand_name if self.brand_name else "Unknown")
-                    )
+                    brand = cols[idx_brand] if len(cols) > idx_brand else (self.brand_name or "Unknown")
                     cover_raw = cols[idx_cover] if len(cols) > idx_cover else "Reactive"
                     finish = cols[idx_finish] if len(cols) > idx_finish else "Factory Finish"
                     core_raw = cols[idx_core] if len(cols) > idx_core else "Symmetric"
@@ -368,16 +399,8 @@ class BowwwlScraperThread(QThread):
                     except (ValueError, IndexError):
                         continue
 
-                    core_type = (
-                        "Asymmetrical" if "Asymmetric" in core_raw or int_diff > 0.005 else "Symmetrical"
-                    )
-                    cover_type = "Solid Reactive"
-                    if "Pearl" in cover_raw:
-                        cover_type = "Pearl Reactive"
-                    elif "Hybrid" in cover_raw:
-                        cover_type = "Hybrid Reactive"
-                    elif "Urethane" in cover_raw:
-                        cover_type = "Urethane"
+                    core_type = simplify_core(core_raw, int_diff)
+                    cover_type = simplify_cover(cover_raw)
 
                     return self.build_ball_dict(
                         brand, name, cover_type, core_type, rg, diff, int_diff, cover_raw, finish
@@ -385,15 +408,6 @@ class BowwwlScraperThread(QThread):
         return None
 
     def parse_bowwwl_product_page(self, html_text, query, brand_hint="", target_weight=15):
-        """
-        bowwwl.com product pages list specs for EVERY drilled weight (16/15/14/13/12 lb)
-        one after another, and repeat generic words like "asymmetric" / "hybrid" in
-        unrelated copy elsewhere on the page. Scanning the whole flattened page text
-        with a single regex (the old approach) grabs whichever weight/word happens to
-        appear first - almost never the standard 15lb spec. Instead we walk the page's
-        text nodes in order and read the actual labeled fields, scoped to the
-        target_weight block.
-        """
         soup = BeautifulSoup(html_text, "html.parser")
         title_el = soup.find("h1")
         title = title_el.text.strip() if title_el else query.title()
@@ -411,9 +425,6 @@ class BowwwlScraperThread(QThread):
                     return strings[i + 1]
             return None
 
-        # Locate the weight heading (e.g. "15 pounds") that is actually followed by
-        # an "RG" field nearby - the page also has an unrelated "Weight: 15 pounds"
-        # spec line near the top that is NOT followed by RG/Diff.
         weight_label = f"{target_weight} pound"
         block_start = -1
         cursor = 0
@@ -423,15 +434,14 @@ class BowwwlScraperThread(QThread):
             )
             if idx == -1:
                 break
-            if any(w.lower() == "rg" for w in strings[idx + 1 : idx + 6]):
+            if any(w.lower() == "rg" for w in strings[idx + 1: idx + 6]):
                 block_start = idx
                 break
             cursor = idx + 1
 
         if block_start == -1:
-            return None  # couldn't confidently find the target weight's spec block
+            return None
 
-        # Don't read past the next weight heading, or we'll bleed into its numbers
         block_end = len(strings)
         for i in range(block_start + 1, len(strings)):
             if re.match(r"^\d{1,2} pounds?$", strings[i].lower()):
@@ -448,13 +458,12 @@ class BowwwlScraperThread(QThread):
         diff_num = re.search(r"\d+\.\d+", diff_str) if diff_str else None
         if not rg_num or not diff_num:
             return None
+
         rg_val = float(rg_num.group())
         diff_val = float(diff_num.group())
         int_diff_match = re.search(r"\d+\.\d+", int_diff_str) if int_diff_str else None
         int_diff_val = float(int_diff_match.group()) if int_diff_match else 0.000
 
-        # Brand: read the actual brand link (bowwwl.com/bowling-ball-database/<brand>)
-        # instead of guessing between two hardcoded options.
         brand = brand_hint.title() if brand_hint else None
         if not brand:
             for a in soup.find_all("a", href=True):
@@ -465,21 +474,11 @@ class BowwwlScraperThread(QThread):
                         break
         brand = brand or "Unknown"
 
-        # Core/cover type: read the explicit "Core Type" / coverstock "Type" labels
-        # instead of searching the entire page for keywords that can appear elsewhere.
         core_raw = value_after("Core Type") or ""
-        core_type = "Asymmetrical" if "asym" in core_raw.lower() or int_diff_val > 0.005 else "Symmetrical"
+        core_type = simplify_core(core_raw, int_diff_val)
 
         cover_raw = value_after("Type") or ""
-        cover_lower = cover_raw.lower()
-        if "pearl" in cover_lower:
-            cover_type = "Pearl Reactive"
-        elif "hybrid" in cover_lower:
-            cover_type = "Hybrid Reactive"
-        elif "urethane" in cover_lower:
-            cover_type = "Urethane"
-        else:
-            cover_type = "Solid Reactive"
+        cover_type = simplify_cover(cover_raw)
 
         finish = value_after("Factory Finish") or "Factory Finish"
 
@@ -519,16 +518,8 @@ class BowwwlScraperThread(QThread):
                         else 0.000
                     )
 
-                    core_type = (
-                        "Asymmetrical" if "Asymmetric" in core_raw or int_diff > 0.005 else "Symmetrical"
-                    )
-                    cover_type = "Solid Reactive"
-                    if "Pearl" in cover_raw:
-                        cover_type = "Pearl Reactive"
-                    elif "Hybrid" in cover_raw:
-                        cover_type = "Hybrid Reactive"
-                    elif "Urethane" in cover_raw:
-                        cover_type = "Urethane"
+                    core_type = simplify_core(core_raw, int_diff)
+                    cover_type = simplify_cover(cover_raw)
 
                     browser.close()
                     return self.build_ball_dict(
@@ -538,33 +529,43 @@ class BowwwlScraperThread(QThread):
             return None
 
     def build_ball_dict(self, brand, name, cover, core, rg, diff, int_diff, cover_name, finish):
+        cover_simple = simplify_cover(cover)
+        core_simple = simplify_core(core, int_diff)
+
         hook_est = min(10.0, max(2.0, (diff * 120.0) + (10 - (rg - 2.40) * 30)))
         length_est = min(10.0, max(2.0, (rg - 2.40) * 40.0))
 
-        # Motion shape (smooth/arcing <-> angular/sharp): cover family sets the
-        # baseline read point, an asymmetric core sharpens the direction change,
-        # and higher differential (more flare potential) sharpens it further.
         angularity_base = (
-            4.5 if "Solid" in cover else (7.0 if "Pearl" in cover else (5.5 if "Hybrid" in cover else 2.5))
+            4.5 if "solid" in cover_simple else (
+                7.0 if "pearl" in cover_simple else (5.5 if "hybrid" in cover_simple else 2.5))
         )
-        angularity_est = angularity_base + (1.5 if "Asymmetrical" in core else 0.0) + (diff - 0.045) * 30.0
+        angularity_est = angularity_base + (1.5 if "asym" in core_simple else 0.0) + (diff - 0.045) * 30.0
         angularity_est = min(10.0, max(1.0, angularity_est))
 
-        # Oil volume the ball is best suited for: cover family sets the baseline
-        # traction, and higher differential adds total hook potential for more oil.
         oil_base = (
-            8.0 if "Solid" in cover else (6.0 if "Hybrid" in cover else (4.0 if "Pearl" in cover else 3.0))
+            8.0 if "solid" in cover_simple else (
+                6.5 if "hybrid" in cover_simple else (5.5 if "pearl" in cover_simple else 3.0))
         )
-        oil_est = oil_base + (diff - 0.045) * 25.0
-        oil_est = min(10.0, max(1.0, oil_est))
+        rg_bonus = max(0.0, (2.52 - rg) * 20.0)
+        diff_bonus = (diff - 0.045) * 30.0
+        asym_bonus = 1.0 if ("asym" in core_simple or int_diff > 0.010) else 0.0
+
+        finish_lower = str(finish).lower()
+        surface_bonus = 0.0
+        if any(grit in finish_lower for grit in ["1000", "2000", "3000", "lss", "abralon", "siaair"]):
+            if "polish" not in finish_lower:
+                surface_bonus = 1.0
+
+        oil_est = min(10.0, max(1.0, oil_base + rg_bonus + diff_bonus + asym_bonus + surface_bonus))
+        pref_oil = simplify_oil(determine_preferred_oil(cover_simple, finish, core_simple, int_diff))
 
         return {
             "id": str(np.random.randint(1000, 9999)),
             "brand": brand,
             "name": name,
-            "cover": cover,
+            "cover": cover_simple,
             "cover_name": cover_name,
-            "core": core,
+            "core": core_simple,
             "rg": rg,
             "diff": diff,
             "int_diff": int_diff,
@@ -573,22 +574,23 @@ class BowwwlScraperThread(QThread):
             "length": round(length_est, 1),
             "angularity": round(angularity_est, 1),
             "oil": round(oil_est, 1),
-            "resin_strength": round(estimate_resin_strength(cover), 1),
+            "preferred_oil": pref_oil,
+            "resin_strength": round(estimate_resin_strength(cover_simple), 1),
             "color": "#" + "".join([np.random.choice(list("0123456789ABCDEF")) for _ in range(6)]),
         }
 
 
 # ----------------------------------------------------------------------
-# Default Catalog Data
+# Defaults & Inventory Helpers
 # ----------------------------------------------------------------------
 DEFAULT_BALLS = [
     {
         "id": "1",
         "brand": "Storm",
         "name": "Bionic",
-        "cover": "Hybrid Reactive",
+        "cover": "hybrid",
         "cover_name": "NRG Hybrid",
-        "core": "Symmetrical",
+        "core": "sym",
         "rg": 2.47,
         "diff": 0.050,
         "int_diff": 0.000,
@@ -597,6 +599,7 @@ DEFAULT_BALLS = [
         "length": 5.5,
         "angularity": 7.0,
         "oil": 7.5,
+        "preferred_oil": "Medium-Heavy",
         "resin_strength": 6.5,
         "color": "#00d2ff",
     },
@@ -604,9 +607,9 @@ DEFAULT_BALLS = [
         "id": "2",
         "brand": "Hammer",
         "name": "Black Widow 3.0",
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "HK22 - Cohesion Solid",
-        "core": "Asymmetrical",
+        "core": "asym",
         "rg": 2.50,
         "diff": 0.058,
         "int_diff": 0.016,
@@ -615,6 +618,7 @@ DEFAULT_BALLS = [
         "length": 4.5,
         "angularity": 8.0,
         "oil": 9.5,
+        "preferred_oil": "Heavy",
         "resin_strength": 9.0,
         "color": "#ff3366",
     },
@@ -622,9 +626,9 @@ DEFAULT_BALLS = [
         "id": "3",
         "brand": "Motiv",
         "name": "Venom Shock",
-        "cover": "Solid Reactive",
+        "cover": "solid",
         "cover_name": "Turmoil MFK Solid",
-        "core": "Symmetrical",
+        "core": "sym",
         "rg": 2.48,
         "diff": 0.034,
         "int_diff": 0.000,
@@ -633,15 +637,12 @@ DEFAULT_BALLS = [
         "length": 6.0,
         "angularity": 5.5,
         "oil": 6.0,
+        "preferred_oil": "Medium-Heavy",
         "resin_strength": 9.0,
         "color": "#00ff88",
     },
 ]
 
-
-# ----------------------------------------------------------------------
-# Shared brand list (used by both the brand filter and the lookup dropdown)
-# ----------------------------------------------------------------------
 KNOWN_BRANDS = [
     "Storm",
     "Hammer",
@@ -655,12 +656,6 @@ KNOWN_BRANDS = [
     "Columbia 300",
 ]
 
-
-# ----------------------------------------------------------------------
-# Inventory persistence
-# ----------------------------------------------------------------------
-# Stores the user's catalog (default balls + anything fetched/kept) as JSON
-# in their home directory, so it survives closing and reopening the app.
 INVENTORY_FILE = os.path.join(os.path.expanduser("~"), ".bowling_ball_inventory.json")
 
 
@@ -670,6 +665,10 @@ def load_inventory():
             with open(INVENTORY_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, list) and data:
+                for b in data:
+                    b["cover"] = simplify_cover(b.get("cover", ""))
+                    b["core"] = simplify_core(b.get("core", ""), b.get("int_diff", 0.0))
+                    b["preferred_oil"] = simplify_oil(b.get("preferred_oil", ""))
                 return data
         except (json.JSONDecodeError, OSError):
             pass
@@ -690,14 +689,18 @@ def save_inventory(balls):
 # ----------------------------------------------------------------------
 class RadarChartCanvas(FigureCanvas):
     def __init__(self, parent=None):
-        self.fig = Figure(figsize=(4, 4), facecolor="#1e1e24")
+        self.fig = Figure(figsize=(4, 4.5), facecolor="#1e1e24")
         self.ax = self.fig.add_subplot(111, polar=True)
         self.ax.set_facecolor("#1e1e24")
         super().__init__(self.fig)
 
     def update_chart(self, selected_balls):
         self.ax.clear()
-        categories = ["Hook Potential", "Skid Length", "Backend Angularity", "Oil Traction", "Versatility"]
+
+        # Adding title with top padding to prevent text overlap
+        self.ax.set_title("Performance Profile Comparison", color="#e0e0e0", fontsize=10, fontweight="bold", pad=20)
+
+        categories = ["Hook\nPotential", "Skid\nLength", "Backend\nAngularity", "Oil\nTraction", "Versatility"]
         N = len(categories)
         angles = [n / float(N) * 2 * np.pi for n in range(N)]
         angles += angles[:1]
@@ -706,6 +709,10 @@ class RadarChartCanvas(FigureCanvas):
         self.ax.set_theta_direction(-1)
         self.ax.set_xticks(angles[:-1])
         self.ax.set_xticklabels(categories, color="#e0e0e0", fontsize=8, fontweight="bold")
+
+        # Increase padding for radar axis labels to prevent overlap
+        self.ax.tick_params(pad=12)
+
         self.ax.set_rlabel_position(0)
         self.ax.set_yticks([2, 4, 6, 8, 10])
         self.ax.set_yticklabels(["2", "4", "6", "8", "10"], color="#888888", fontsize=7)
@@ -731,14 +738,17 @@ class RadarChartCanvas(FigureCanvas):
             self.ax.fill(angles, values, color=color, alpha=0.15)
 
         if selected_balls:
+            # Legend positioned below radar chart
             self.ax.legend(
-                loc="upper right",
-                bbox_to_anchor=(1.3, 1.1),
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.15),
+                ncol=2,
                 facecolor="#2a2a36",
                 edgecolor="none",
                 labelcolor="white",
                 fontsize=7,
             )
+
         self.fig.tight_layout()
         self.draw()
 
@@ -752,7 +762,7 @@ class QuadrantPlotCanvas(FigureCanvas):
 
     def update_chart(self, all_balls, selected_ids):
         self.ax.clear()
-        self.ax.set_title("RG vs. Differential Dynamics", color="#e0e0e0", fontsize=10, fontweight="bold")
+        self.ax.set_title("RG vs. Differential Dynamics", color="#e0e0e0", fontsize=10, fontweight="bold", pad=12)
         self.ax.set_xlabel("Radius of Gyration (RG) -> Higher Skid", color="#aaaaaa", fontsize=8)
         self.ax.set_ylabel("Differential -> Higher Flare", color="#aaaaaa", fontsize=8)
 
@@ -796,12 +806,6 @@ class QuadrantPlotCanvas(FigureCanvas):
 
 
 class CoverstockStrengthCanvas(FigureCanvas):
-    """
-    Plots the estimated resin blend strength (see estimate_resin_strength) -
-    how strong/aggressive the coverstock's base resin family is - grouped by
-    cover category and color-coded per ball.
-    """
-
     def __init__(self, parent=None):
         self.fig = Figure(figsize=(4, 4), facecolor="#1e1e24")
         self.ax = self.fig.add_subplot(111)
@@ -815,6 +819,7 @@ class CoverstockStrengthCanvas(FigureCanvas):
             color="#e0e0e0",
             fontsize=8,
             fontweight="bold",
+            pad=12,
         )
         self.ax.set_ylabel("Resin Strength (est.)", color="#aaaaaa", fontsize=8)
         self.ax.set_ylim(0, 10)
@@ -829,7 +834,7 @@ class CoverstockStrengthCanvas(FigureCanvas):
             self.draw()
             return
 
-        labels = [f"{b['brand']}\n{b['name']}" for b in selected_balls]
+        labels = [f"{b['brand']} {b['name']}" for b in selected_balls]
         strengths = [
             b.get("resin_strength", estimate_resin_strength(b.get("cover", ""))) for b in selected_balls
         ]
@@ -837,21 +842,15 @@ class CoverstockStrengthCanvas(FigureCanvas):
 
         self.ax.bar(range(len(labels)), strengths, color=colors)
         self.ax.set_xticks(range(len(labels)))
-        self.ax.set_xticklabels(labels, color="#e0e0e0", fontsize=7)
+
+        # Vertical labels for high clarity
+        self.ax.set_xticklabels(labels, color="#e0e0e0", fontsize=7, rotation=90, ha="center")
 
         self.fig.tight_layout()
         self.draw()
 
 
 class MotionOilMapCanvas(FigureCanvas):
-    """
-    Estimated placement of each ball by motion shape (X: smooth/arcing <->
-    angular/sharp) and best-fit oil volume (Y: light/dry <-> heavy). Neither
-    axis is a bowwwl.com field - both are derived from cover family, core
-    symmetry, and differential, which are the actual drivers of these traits.
-    Labeled as an estimate; not lab-measured.
-    """
-
     def __init__(self, parent=None):
         self.fig = Figure(figsize=(5, 4.5), facecolor="#1e1e24")
         self.ax = self.fig.add_subplot(111)
@@ -860,11 +859,12 @@ class MotionOilMapCanvas(FigureCanvas):
 
     def update_chart(self, selected_balls):
         self.ax.clear()
-        self.ax.set_title("Estimated Motion Map", color="#e0e0e0", fontsize=10, fontweight="bold")
+        self.ax.set_title("Estimated Motion & Preferred Condition Map", color="#e0e0e0", fontsize=10, fontweight="bold",
+                          pad=12)
         self.ax.set_xlabel(
             "Motion Shape: Smooth / Arcing \u2190\u2192 Angular / Sharp", color="#aaaaaa", fontsize=8
         )
-        self.ax.set_ylabel("Best-Fit Oil Volume: Light/Dry \u2192 Heavy", color="#aaaaaa", fontsize=8)
+        self.ax.set_ylabel("Best-Fit Volume: Light/Dry \u2192 Heavy", color="#aaaaaa", fontsize=8)
 
         self.ax.set_xlim(0, 10)
         self.ax.set_ylim(0, 10)
@@ -881,7 +881,7 @@ class MotionOilMapCanvas(FigureCanvas):
             y = ball.get("oil", 5.0)
             self.ax.scatter(x, y, color=color, s=140, edgecolors="white", zorder=3)
             self.ax.annotate(
-                f"{ball['brand']} {ball['name']}",
+                f"{ball['name']}",
                 (x, y),
                 xytext=(6, 6),
                 textcoords="offset points",
@@ -901,7 +901,7 @@ class BowlingBallApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Pro-Track Bowling Ball Comparison Engine (bowwwl.com Database)")
-        self.resize(1280, 850)
+        self.resize(1320, 850)
 
         self.balls = load_inventory()
         self.selected_ids = ["1", "2"]
@@ -947,7 +947,7 @@ class BowlingBallApp(QMainWindow):
         self.brand_search_in.setEditable(True)
         self.brand_search_in.addItems(KNOWN_BRANDS)
         self.brand_search_in.setCurrentIndex(-1)
-        self.brand_search_in.lineEdit().setPlaceholderText("Brand (pick one or type a new one)")
+        self.brand_search_in.lineEdit().setPlaceholderText("Brand")
         self.brand_search_in.lineEdit().returnPressed.connect(self.scrape_ball_online)
 
         self.web_search_in = QLineEdit()
@@ -980,9 +980,12 @@ class BowlingBallApp(QMainWindow):
 
         # Main Table
         self.db_table = QTableWidget()
-        self.db_table.setColumnCount(5)
-        self.db_table.setHorizontalHeaderLabels(["Compare", "Brand", "Model", "Core", "Cover"])
+        self.db_table.setColumnCount(6)
+        self.db_table.setHorizontalHeaderLabels(["", "Brand", "Model", "Core", "Cover", "Preferred Oil"])
         self.db_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.db_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.db_table.setColumnWidth(0, 30)
+
         self.db_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.db_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.db_table.customContextMenuRequested.connect(self.show_context_menu)
@@ -999,7 +1002,7 @@ class BowlingBallApp(QMainWindow):
         self.btn_save_inventory.clicked.connect(self.save_inventory_now)
         catalog_btn_layout.addWidget(self.btn_save_inventory)
 
-        self.btn_reset_inventory = QPushButton("↺ Reset to Default Catalog")
+        self.btn_reset_inventory = QPushButton("↺ Reset")
         self.btn_reset_inventory.clicked.connect(self.reset_inventory)
         catalog_btn_layout.addWidget(self.btn_reset_inventory)
 
@@ -1010,13 +1013,13 @@ class BowlingBallApp(QMainWindow):
         right_layout = QVBoxLayout(right_panel)
         self.tabs = QTabWidget()
 
-        # Tab 1: Spec Matrix
+        # Tab 1: Spec Matrix & Gaps
         self.tab_matrix = QWidget()
         matrix_layout = QVBoxLayout(self.tab_matrix)
         self.matrix_table = QTableWidget()
         matrix_layout.addWidget(self.matrix_table)
 
-        self.gap_box = QGroupBox("Arsenal Structure & Gap Analysis")
+        self.gap_box = QGroupBox("Arsenal Structure & Gap Analysis (6-Ball Slot Grid)")
         gap_layout = QVBoxLayout(self.gap_box)
         self.gap_label = QLabel("Select balls to evaluate coverage...")
         self.gap_label.setWordWrap(True)
@@ -1024,7 +1027,7 @@ class BowlingBallApp(QMainWindow):
         matrix_layout.addWidget(self.gap_box)
         self.tabs.addTab(self.tab_matrix, "Spec Matrix & Gaps")
 
-        # Tab 2: Charts
+        # Tab 2: Radar & Core Dynamics
         self.tab_charts = QWidget()
         charts_layout = QHBoxLayout(self.tab_charts)
         self.radar_canvas = RadarChartCanvas(self)
@@ -1037,14 +1040,7 @@ class BowlingBallApp(QMainWindow):
         self.tab_cover = QWidget()
         cover_layout = QVBoxLayout(self.tab_cover)
 
-        cover_note = QLabel(
-            "Coverstocks can't be compared apples-to-apples across brands — each manufacturer's "
-            "reactive resin blend is proprietary and there's no shared, published traction number. "
-            '"Resin Strength" here is an ESTIMATE based on the cover family every brand\'s ball '
-            "belongs to (Urethane < Pearl Reactive < Hybrid Reactive < Solid Reactive is the "
-            "industry's standard ordering of how strong/aggressive the base resin is) — it's not "
-            "a scraped or lab-measured number, and balls within the same category still vary."
-        )
+        cover_note = QLabel("Coverstock families determine base strength and oil traction behavior.")
         cover_note.setWordWrap(True)
         cover_note.setStyleSheet("color: #999999; font-size: 11px; padding: 2px 4px 8px 4px;")
         cover_layout.addWidget(cover_note)
@@ -1068,16 +1064,6 @@ class BowlingBallApp(QMainWindow):
         self.tab_motion = QWidget()
         motion_layout = QVBoxLayout(self.tab_motion)
 
-        motion_note = QLabel(
-            'bowwwl.com doesn\'t publish "oil volume" or "motion shape" as fields, so this map is '
-            "ESTIMATED from the specs that actually drive those traits: cover family and differential "
-            "for oil volume; cover family, core symmetry, and differential for motion shape (asymmetric "
-            "cores and higher differential both sharpen the backend reaction)."
-        )
-        motion_note.setWordWrap(True)
-        motion_note.setStyleSheet("color: #999999; font-size: 11px; padding: 2px 4px 8px 4px;")
-        motion_layout.addWidget(motion_note)
-
         self.motion_canvas = MotionOilMapCanvas(self)
         motion_layout.addWidget(self.motion_canvas)
         self.tabs.addTab(self.tab_motion, "Oil Volume vs Motion")
@@ -1087,7 +1073,7 @@ class BowlingBallApp(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(left_panel)
         splitter.addWidget(right_panel)
-        splitter.setSizes([450, 830])
+        splitter.setSizes([480, 840])
 
         main_layout.addWidget(splitter)
 
@@ -1136,7 +1122,7 @@ class BowlingBallApp(QMainWindow):
             f"• Differential (15lb): {ball_data['diff']:.3f}\n"
             f"• Intermediate Diff: {ball_data['int_diff']:.3f}\n"
             f"• Core Architecture: {ball_data['core']}\n"
-            f"• Coverstock Material: {ball_data['cover_name']}\n"
+            f"• Preferred Oil Condition: {ball_data.get('preferred_oil', 'Medium')}\n"
             f"• Factory Finish: {ball_data['finish']}",
         )
         self.update_all_views()
@@ -1217,7 +1203,7 @@ class BowlingBallApp(QMainWindow):
             menu.exec(self.db_table.viewport().mapToGlobal(position))
 
     # ------------------------------------------------------------------
-    # Data Updates
+    # Data Updates & UI Sync
     # ------------------------------------------------------------------
     def filter_database(self):
         query = self.search_box.text().lower()
@@ -1228,7 +1214,7 @@ class BowlingBallApp(QMainWindow):
             b
             for b in self.balls
             if (query in b["name"].lower() or query in b["brand"].lower())
-            and (brand == "All Brands" or b["brand"] == brand)
+               and (brand == "All Brands" or b["brand"] == brand)
         ]
 
         self.db_table.setRowCount(len(filtered))
@@ -1244,8 +1230,13 @@ class BowlingBallApp(QMainWindow):
 
             self.db_table.setItem(row, 1, brand_item)
             self.db_table.setItem(row, 2, QTableWidgetItem(ball["name"]))
-            self.db_table.setItem(row, 3, QTableWidgetItem(ball["core"]))
-            self.db_table.setItem(row, 4, QTableWidgetItem(ball["cover"]))
+            self.db_table.setItem(row, 3, QTableWidgetItem(simplify_core(ball["core"], ball.get("int_diff", 0.0))))
+            self.db_table.setItem(row, 4, QTableWidgetItem(simplify_cover(ball["cover"])))
+            pref_oil = ball.get(
+                "preferred_oil",
+                determine_preferred_oil(ball["cover"], ball["finish"], ball["core"], ball["int_diff"]),
+            )
+            self.db_table.setItem(row, 5, QTableWidgetItem(simplify_oil(pref_oil)))
 
     def toggle_selection(self, ball_id, state):
         if state == 2:
@@ -1282,10 +1273,11 @@ class BowlingBallApp(QMainWindow):
             ("Differential", "diff"),
             ("Intermediate Diff", "int_diff"),
             ("Factory Finish", "finish"),
+            ("Preferred Oil Condition", "preferred_oil"),
             ("Hook Potential", "hook"),
             ("Length/Skid", "length"),
             ("Angularity", "angularity"),
-            ("Oil Traction", "oil"),
+            ("Oil Traction Rating", "oil"),
         ]
 
         self.matrix_table.setRowCount(len(specs))
@@ -1298,46 +1290,79 @@ class BowlingBallApp(QMainWindow):
 
         for col, ball in enumerate(selected_balls):
             for row, (_, key) in enumerate(specs):
-                item = QTableWidgetItem(str(ball[key]))
+                val = ball.get(
+                    key,
+                    determine_preferred_oil(
+                        ball["cover"], ball["finish"], ball["core"], ball["int_diff"]
+                    )
+                    if key == "preferred_oil"
+                    else "N/A",
+                )
+                if key == "cover":
+                    val = simplify_cover(val)
+                elif key == "core":
+                    val = simplify_core(val, ball.get("int_diff", 0.0))
+                elif key == "preferred_oil":
+                    val = simplify_oil(val)
+
+                item = QTableWidgetItem(str(val))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.matrix_table.setItem(row, col, item)
 
     def update_gap_analysis(self, selected_balls):
         if not selected_balls:
-            self.gap_label.setText("Select 1 to 4 balls to inspect arsenal gaps.")
+            self.gap_label.setText("Select balls to evaluate 6-slot coverage.")
             return
 
-        has_heavy_solid = any("Solid" in b["cover"] and b["oil"] >= 8.0 for b in selected_balls)
-        has_benchmark = any(
-            "Solid" in b["cover"] and b["core"] == "Symmetrical" and 2.47 <= b["rg"] <= 2.51
-            for b in selected_balls
-        )
-        has_pearl_angular = any("Pearl" in b["cover"] and b["angularity"] >= 7.5 for b in selected_balls)
+        slots = {
+            "big asym": None,
+            "big sym": None,
+            "control": None,
+            "clean asym": None,
+            "clean sym": None,
+            "specialty": None,
+        }
 
-        insights = []
-        insights.append(
-            "<b style='color:#00ff88;'>✔ Heavy Oil Traction</b>"
-            if has_heavy_solid
-            else "<b style='color:#ff5555;'>⚠ Gap - Heavy Oil:</b> Missing strong solid coverstock."
-        )
-        insights.append(
-            "<b style='color:#00ff88;'>✔ Benchmark Ball</b>"
-            if has_benchmark
-            else "<b style='color:#ffaa00;'>⚠ Gap - Benchmark:</b> Missing classic symmetrical benchmark ball."
-        )
-        insights.append(
-            "<b style='color:#00ff88;'>✔ Late Skid/Flip</b>"
-            if has_pearl_angular
-            else "<b style='color:#ffaa00;'>⚠ Gap - Angularity:</b> Missing high-angularity pearl ball."
-        )
+        for b in selected_balls:
+            cover = simplify_cover(b["cover"])
+            core = simplify_core(b["core"], b.get("int_diff", 0.0))
+            oil = b.get("oil", 5.0)
+            ang = b.get("angularity", 5.0)
 
-        self.gap_label.setText("<br>".join(insights))
+            # 1. Big Asym
+            if core == "asym" and cover in ["solid", "hybrid"] and oil >= 7.5 and not slots["big asym"]:
+                slots["big asym"] = b["name"]
+            # 2. Big Sym
+            elif core == "sym" and cover == "solid" and oil >= 6.5 and not slots["big sym"]:
+                slots["big sym"] = b["name"]
+            # 3. Control
+            elif (cover == "urethane" or (b.get("diff", 0.0) <= 0.038 and oil <= 6.5)) and not slots["control"]:
+                slots["control"] = b["name"]
+            # 4. Clean Asym
+            elif core == "asym" and cover in ["pearl", "hybrid"] and ang >= 6.5 and not slots["clean asym"]:
+                slots["clean asym"] = b["name"]
+            # 5. Clean Sym
+            elif core == "sym" and cover in ["pearl", "hybrid"] and not slots["clean sym"]:
+                slots["clean sym"] = b["name"]
+            # 6. Specialty
+            elif (cover in ["urethane", "plastic"] or b.get("diff", 0.0) < 0.025) and not slots["specialty"]:
+                slots["specialty"] = b["name"]
+
+        display_texts = []
+        for slot_name, filled_ball in slots.items():
+            slot_title = slot_name.upper()
+            if filled_ball:
+                display_texts.append(f"<b style='color:#00ff88;'>✔ {slot_title}:</b> {filled_ball}")
+            else:
+                display_texts.append(f"<b style='color:#ffaa00;'>⚠ {slot_title}:</b> [Empty Slot]")
+
+        self.gap_label.setText("<br>".join(display_texts))
 
     def update_coverstock_comparison(self, selected_balls):
         self.cover_table.setRowCount(len(selected_balls))
         for row, ball in enumerate(selected_balls):
             self.cover_table.setItem(row, 0, QTableWidgetItem(f"{ball['brand']} {ball['name']}"))
-            self.cover_table.setItem(row, 1, QTableWidgetItem(ball.get("cover", "")))
+            self.cover_table.setItem(row, 1, QTableWidgetItem(simplify_cover(ball.get("cover", ""))))
             self.cover_table.setItem(row, 2, QTableWidgetItem(ball.get("cover_name", "")))
             strength = ball.get("resin_strength", estimate_resin_strength(ball.get("cover", "")))
             self.cover_table.setItem(row, 3, QTableWidgetItem(f"{strength:.1f} / 10"))
