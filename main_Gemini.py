@@ -27,9 +27,11 @@ from PyQt6.QtWidgets import (
     QMenu,
     QSplitter,
     QTabWidget,
+    QFrame,
+    QGridLayout,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QMimeData
+from PyQt6.QtGui import QAction, QDrag
 
 import matplotlib
 
@@ -251,6 +253,144 @@ BOWWWL_VERIFIED_DB = {
         "finish": "2000 Abralon",
     },
 }
+
+
+# ----------------------------------------------------------------------
+# Drag-and-Drop Enabled Table Widget
+# ----------------------------------------------------------------------
+class DraggableTableWidget(QTableWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragEnabled(True)
+
+    def startDrag(self, supportedActions):
+        item = self.currentItem()
+        if not item:
+            return
+
+        row = item.row()
+        brand_item = self.item(row, 1)
+        if not brand_item:
+            return
+
+        ball_id = brand_item.data(Qt.ItemDataRole.UserRole)
+        model_item = self.item(row, 2)
+        ball_name = f"{brand_item.text()} {model_item.text()}" if model_item else brand_item.text()
+
+        mime_data = QMimeData()
+        mime_data.setData("application/x-bowling-ball-id", ball_id.encode("utf-8"))
+        mime_data.setText(ball_name)
+
+        drag = QDrag(self)
+        drag.setMimeData(mime_data)
+        drag.exec(Qt.DropAction.CopyAction)
+
+
+# ----------------------------------------------------------------------
+# Droppable Arsenal Slot Box
+# ----------------------------------------------------------------------
+class ArsenalSlotBox(QFrame):
+    ball_dropped = pyqtSignal(str, str)  # slot_key, ball_id
+    slot_cleared = pyqtSignal(str)       # slot_key
+
+    def __init__(self, slot_key, title, parent=None):
+        super().__init__(parent)
+        self.slot_key = slot_key
+        self.slot_title = title
+        self.ball_name = None
+        self.ball_id = None
+        self.setAcceptDrops(True)
+
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet("""
+            ArsenalSlotBox {
+                background-color: #181820;
+                border: 2px dashed #3a3a4c;
+                border-radius: 8px;
+                padding: 6px;
+            }
+            ArsenalSlotBox[dragOver="true"] {
+                border-color: #00d2ff;
+                background-color: #202030;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        self.title_label = QLabel(f"<b>{self.slot_title}</b>")
+        self.title_label.setStyleSheet("color: #00d2ff; font-size: 11px;")
+        layout.addWidget(self.title_label)
+
+        self.content_label = QLabel("[ Empty Slot ]")
+        self.content_label.setStyleSheet("color: #777; font-size: 11px;")
+        self.content_label.setWordWrap(True)
+        layout.addWidget(self.content_label)
+
+    def set_ball(self, ball_id, ball_name):
+        self.ball_id = ball_id
+        self.ball_name = ball_name
+        if ball_name:
+            self.content_label.setText(f"⚾ {ball_name}")
+            self.content_label.setStyleSheet("color: #00ff88; font-weight: bold; font-size: 11px;")
+            self.setStyleSheet("""
+                ArsenalSlotBox {
+                    background-color: #1a2620;
+                    border: 2px solid #00ff88;
+                    border-radius: 8px;
+                    padding: 6px;
+                }
+            """)
+        else:
+            self.clear_slot()
+
+    def clear_slot(self):
+        self.ball_id = None
+        self.ball_name = None
+        self.content_label.setText("[ Empty - Drag Ball Here ]")
+        self.content_label.setStyleSheet("color: #777; font-size: 11px;")
+        self.setStyleSheet("""
+            ArsenalSlotBox {
+                background-color: #181820;
+                border: 2px dashed #3a3a4c;
+                border-radius: 8px;
+                padding: 6px;
+            }
+        """)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat("application/x-bowling-ball-id"):
+            event.acceptProposedAction()
+            self.setProperty("dragOver", True)
+            self.style().unpolish(self)
+            self.style().polish(self)
+
+    def dragLeaveEvent(self, event):
+        self.setProperty("dragOver", False)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def dropEvent(self, event):
+        self.setProperty("dragOver", False)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+        if event.mimeData().hasFormat("application/x-bowling-ball-id"):
+            ball_id = event.mimeData().data("application/x-bowling-ball-id").data().decode("utf-8")
+            event.acceptProposedAction()
+            self.ball_dropped.emit(self.slot_key, ball_id)
+
+    def mouseDoubleClickEvent(self, event):
+        if self.ball_id:
+            self.slot_cleared.emit(self.slot_key)
+
+    def contextMenuEvent(self, event):
+        if self.ball_id:
+            menu = QMenu(self)
+            clear_action = QAction("Clear Slot", self)
+            clear_action.triggered.connect(lambda: self.slot_cleared.emit(self.slot_key))
+            menu.addAction(clear_action)
+            menu.exec(event.globalPos())
 
 
 # ----------------------------------------------------------------------
@@ -719,6 +859,11 @@ class RadarChartCanvas(FigureCanvas):
         self.ax.set_ylim(0, 10)
         self.ax.grid(True, color="#333340", linestyle="--")
 
+        if not selected_balls:
+            self.fig.tight_layout()
+            self.draw()
+            return
+
         for ball in selected_balls:
             versatility = 10 - abs(ball["rg"] - 2.50) * 40 - abs(ball["diff"] - 0.045) * 50
             versatility = max(3.0, min(9.5, versatility))
@@ -737,17 +882,15 @@ class RadarChartCanvas(FigureCanvas):
             )
             self.ax.fill(angles, values, color=color, alpha=0.15)
 
-        if selected_balls:
-            # Legend positioned below radar chart
-            self.ax.legend(
-                loc="upper center",
-                bbox_to_anchor=(0.5, -0.15),
-                ncol=2,
-                facecolor="#2a2a36",
-                edgecolor="none",
-                labelcolor="white",
-                fontsize=7,
-            )
+        self.ax.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.15),
+            ncol=2,
+            facecolor="#2a2a36",
+            edgecolor="none",
+            labelcolor="white",
+            fontsize=7,
+        )
 
         self.fig.tight_layout()
         self.draw()
@@ -774,6 +917,11 @@ class QuadrantPlotCanvas(FigureCanvas):
         self.ax.tick_params(colors="#888888", labelsize=8)
         for spine in self.ax.spines.values():
             spine.set_color("#333340")
+
+        if not all_balls:
+            self.fig.tight_layout()
+            self.draw()
+            return
 
         for ball in all_balls:
             is_selected = ball["id"] in selected_ids
@@ -829,7 +977,6 @@ class CoverstockStrengthCanvas(FigureCanvas):
 
         if not selected_balls:
             self.ax.set_xticks([])
-            self.ax.set_yticks([])
             self.fig.tight_layout()
             self.draw()
             return
@@ -875,6 +1022,11 @@ class MotionOilMapCanvas(FigureCanvas):
         for spine in self.ax.spines.values():
             spine.set_color("#333340")
 
+        if not selected_balls:
+            self.fig.tight_layout()
+            self.draw()
+            return
+
         for ball in selected_balls:
             color = ball.get("color", "#00d2ff")
             x = ball.get("angularity", 5.0)
@@ -905,6 +1057,7 @@ class BowlingBallApp(QMainWindow):
 
         self.balls = load_inventory()
         self.selected_ids = ["1", "2"]
+        self.slot_assignments = {}  # {slot_key: ball_id}
 
         self.init_ui()
         self.apply_stylesheet()
@@ -937,6 +1090,15 @@ class BowlingBallApp(QMainWindow):
         left_panel = QGroupBox("Ball Database Catalog (bowwwl.com)")
         left_layout = QVBoxLayout(left_panel)
 
+        # Selection Control Bar (Select All)
+        select_all_layout = QHBoxLayout()
+        self.chk_select_all = QCheckBox("Choose All Balls")
+        self.chk_select_all.setToolTip("Select or deselect all visible balls in the database")
+        self.chk_select_all.stateChanged.connect(self.toggle_select_all)
+        select_all_layout.addWidget(self.chk_select_all)
+        select_all_layout.addStretch()
+        left_layout.addLayout(select_all_layout)
+
         # Lookup Box
         lookup_box = QGroupBox("Fetch Specs from bowwwl.com")
         lookup_layout = QVBoxLayout(lookup_box)
@@ -951,7 +1113,7 @@ class BowlingBallApp(QMainWindow):
         self.brand_search_in.lineEdit().returnPressed.connect(self.scrape_ball_online)
 
         self.web_search_in = QLineEdit()
-        self.web_search_in.setPlaceholderText("Ball Name (e.g. Evil Eye Pearl)")
+        self.web_search_in.setPlaceholderText("Ball Name")
         self.web_search_in.returnPressed.connect(self.scrape_ball_online)
 
         input_fields_layout.addWidget(self.brand_search_in, 1)
@@ -978,8 +1140,8 @@ class BowlingBallApp(QMainWindow):
 
         left_layout.addLayout(filter_layout)
 
-        # Main Table
-        self.db_table = QTableWidget()
+        # Main Table (Draggable)
+        self.db_table = DraggableTableWidget()
         self.db_table.setColumnCount(6)
         self.db_table.setHorizontalHeaderLabels(["", "Brand", "Model", "Core", "Cover", "Preferred Oil"])
         self.db_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -1019,13 +1181,38 @@ class BowlingBallApp(QMainWindow):
         self.matrix_table = QTableWidget()
         matrix_layout.addWidget(self.matrix_table)
 
-        self.gap_box = QGroupBox("Arsenal Structure & Gap Analysis (6-Ball Slot Grid)")
+        self.gap_box = QGroupBox("Arsenal Structure")
         gap_layout = QVBoxLayout(self.gap_box)
-        self.gap_label = QLabel("Select balls to evaluate coverage...")
-        self.gap_label.setWordWrap(True)
-        gap_layout.addWidget(self.gap_label)
+
+        instruction_lbl = QLabel("<i style='color:#aaa;'>Drag balls from the catalog table on the left directly onto the slots below. Double-click or right-click a filled slot to clear it.</i>")
+        instruction_lbl.setWordWrap(True)
+        gap_layout.addWidget(instruction_lbl)
+
+        # Grid of Arsenal Slots
+        self.slots_grid = QGridLayout()
+        self.slot_widgets = {}
+
+        slot_definitions = [
+            ("big asym", "1. BIG ASYM"),
+            ("big sym", "2. BIG SYM"),
+            ("control", "3. CONTROL"),
+            ("clean asym", "4. CLEAN ASYM"),
+            ("clean sym", "5. CLEAN SYM"),
+            ("specialty", "6. SPECIALTY"),
+        ]
+
+        for idx, (slot_key, slot_title) in enumerate(slot_definitions):
+            row = idx // 3
+            col = idx % 3
+            slot_box = ArsenalSlotBox(slot_key, slot_title)
+            slot_box.ball_dropped.connect(self.on_slot_ball_dropped)
+            slot_box.slot_cleared.connect(self.on_slot_cleared)
+            self.slot_widgets[slot_key] = slot_box
+            self.slots_grid.addWidget(slot_box, row, col)
+
+        gap_layout.addLayout(self.slots_grid)
         matrix_layout.addWidget(self.gap_box)
-        self.tabs.addTab(self.tab_matrix, "Spec Matrix & Gaps")
+        self.tabs.addTab(self.tab_matrix, "Spec Matrix")
 
         # Tab 2: Radar & Core Dynamics
         self.tab_charts = QWidget()
@@ -1034,7 +1221,7 @@ class BowlingBallApp(QMainWindow):
         self.quadrant_canvas = QuadrantPlotCanvas(self)
         charts_layout.addWidget(self.radar_canvas)
         charts_layout.addWidget(self.quadrant_canvas)
-        self.tabs.addTab(self.tab_charts, "Radar & Core Dynamics")
+        self.tabs.addTab(self.tab_charts, "Core Dynamics")
 
         # Tab 3: Coverstock Comparison
         self.tab_cover = QWidget()
@@ -1058,7 +1245,7 @@ class BowlingBallApp(QMainWindow):
         cover_split.addWidget(self.cover_canvas, 2)
 
         cover_layout.addLayout(cover_split)
-        self.tabs.addTab(self.tab_cover, "Coverstock Comparison")
+        self.tabs.addTab(self.tab_cover, "Coverstock")
 
         # Tab 4: Oil Volume vs Motion Map
         self.tab_motion = QWidget()
@@ -1076,6 +1263,48 @@ class BowlingBallApp(QMainWindow):
         splitter.setSizes([480, 840])
 
         main_layout.addWidget(splitter)
+
+    # ------------------------------------------------------------------
+    # Drag-and-Drop Slot Handling
+    # ------------------------------------------------------------------
+    def on_slot_ball_dropped(self, slot_key, ball_id):
+        ball = next((b for b in self.balls if b["id"] == ball_id), None)
+        if ball:
+            self.slot_assignments[slot_key] = ball_id
+            ball_name = f"{ball['brand']} {ball['name']}"
+            self.slot_widgets[slot_key].set_ball(ball_id, ball_name)
+
+    def on_slot_cleared(self, slot_key):
+        if slot_key in self.slot_assignments:
+            del self.slot_assignments[slot_key]
+        self.slot_widgets[slot_key].clear_slot()
+
+    # ------------------------------------------------------------------
+    # Select All Checkbox Handler
+    # ------------------------------------------------------------------
+    def toggle_select_all(self, state):
+        visible_balls = self.get_filtered_balls()
+
+        if state == 2:  # Checked
+            for b in visible_balls:
+                if b["id"] not in self.selected_ids:
+                    self.selected_ids.append(b["id"])
+        else:  # Unchecked
+            for b in visible_balls:
+                if b["id"] in self.selected_ids:
+                    self.selected_ids.remove(b["id"])
+
+        self.update_all_views()
+
+    def get_filtered_balls(self):
+        query = self.search_box.text().lower()
+        brand = self.brand_filter.currentText()
+        return [
+            b
+            for b in self.balls
+            if (query in b["name"].lower() or query in b["brand"].lower())
+            and (brand == "All Brands" or b["brand"] == brand)
+        ]
 
     # ------------------------------------------------------------------
     # bowwwl.com Scraper Slot
@@ -1149,6 +1378,7 @@ class BowlingBallApp(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             self.balls = list(DEFAULT_BALLS)
             self.selected_ids = ["1", "2"]
+            self.slot_assignments.clear()
             save_inventory(self.balls)
             self.update_all_views()
 
@@ -1190,6 +1420,11 @@ class BowlingBallApp(QMainWindow):
                 if b["id"] in self.selected_ids:
                     self.selected_ids.remove(b["id"])
 
+                # Remove from drag/drop slots if assigned
+                for key, assigned_id in list(self.slot_assignments.items()):
+                    if assigned_id == b["id"]:
+                        self.on_slot_cleared(key)
+
             save_inventory(self.balls)
             self.update_all_views()
 
@@ -1206,18 +1441,16 @@ class BowlingBallApp(QMainWindow):
     # Data Updates & UI Sync
     # ------------------------------------------------------------------
     def filter_database(self):
-        query = self.search_box.text().lower()
-        brand = self.brand_filter.currentText()
+        filtered = self.get_filtered_balls()
 
         self.db_table.setRowCount(0)
-        filtered = [
-            b
-            for b in self.balls
-            if (query in b["name"].lower() or query in b["brand"].lower())
-               and (brand == "All Brands" or b["brand"] == brand)
-        ]
-
         self.db_table.setRowCount(len(filtered))
+
+        self.chk_select_all.blockSignals(True)
+        all_visible_selected = len(filtered) > 0 and all(b["id"] in self.selected_ids for b in filtered)
+        self.chk_select_all.setChecked(all_visible_selected)
+        self.chk_select_all.blockSignals(False)
+
         for row, ball in enumerate(filtered):
             chk = QCheckBox()
             chk.setChecked(ball["id"] in self.selected_ids)
@@ -1310,53 +1543,15 @@ class BowlingBallApp(QMainWindow):
                 self.matrix_table.setItem(row, col, item)
 
     def update_gap_analysis(self, selected_balls):
-        if not selected_balls:
-            self.gap_label.setText("Select balls to evaluate 6-slot coverage.")
-            return
-
-        slots = {
-            "big asym": None,
-            "big sym": None,
-            "control": None,
-            "clean asym": None,
-            "clean sym": None,
-            "specialty": None,
-        }
-
-        for b in selected_balls:
-            cover = simplify_cover(b["cover"])
-            core = simplify_core(b["core"], b.get("int_diff", 0.0))
-            oil = b.get("oil", 5.0)
-            ang = b.get("angularity", 5.0)
-
-            # 1. Big Asym
-            if core == "asym" and cover in ["solid", "hybrid"] and oil >= 7.5 and not slots["big asym"]:
-                slots["big asym"] = b["name"]
-            # 2. Big Sym
-            elif core == "sym" and cover == "solid" and oil >= 6.5 and not slots["big sym"]:
-                slots["big sym"] = b["name"]
-            # 3. Control
-            elif (cover == "urethane" or (b.get("diff", 0.0) <= 0.038 and oil <= 6.5)) and not slots["control"]:
-                slots["control"] = b["name"]
-            # 4. Clean Asym
-            elif core == "asym" and cover in ["pearl", "hybrid"] and ang >= 6.5 and not slots["clean asym"]:
-                slots["clean asym"] = b["name"]
-            # 5. Clean Sym
-            elif core == "sym" and cover in ["pearl", "hybrid"] and not slots["clean sym"]:
-                slots["clean sym"] = b["name"]
-            # 6. Specialty
-            elif (cover in ["urethane", "plastic"] or b.get("diff", 0.0) < 0.025) and not slots["specialty"]:
-                slots["specialty"] = b["name"]
-
-        display_texts = []
-        for slot_name, filled_ball in slots.items():
-            slot_title = slot_name.upper()
-            if filled_ball:
-                display_texts.append(f"<b style='color:#00ff88;'>✔ {slot_title}:</b> {filled_ball}")
-            else:
-                display_texts.append(f"<b style='color:#ffaa00;'>⚠ {slot_title}:</b> [Empty Slot]")
-
-        self.gap_label.setText("<br>".join(display_texts))
+        # Synchronize drag and drop slot displays with currently assigned balls
+        for slot_key, slot_box in self.slot_widgets.items():
+            assigned_id = self.slot_assignments.get(slot_key)
+            if assigned_id:
+                ball = next((b for b in self.balls if b["id"] == assigned_id), None)
+                if ball:
+                    slot_box.set_ball(ball["id"], f"{ball['brand']} {ball['name']}")
+                else:
+                    slot_box.clear_slot()
 
     def update_coverstock_comparison(self, selected_balls):
         self.cover_table.setRowCount(len(selected_balls))
